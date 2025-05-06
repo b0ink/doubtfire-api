@@ -449,6 +449,10 @@ class TaskDefinition < ApplicationRecord
     scorm_attempt_limit
   end
 
+  def tutorial_self_enrolment_enabled?
+    tutorial_self_enrolment_enabled
+  end
+
   def is_graded?
     is_graded
   end

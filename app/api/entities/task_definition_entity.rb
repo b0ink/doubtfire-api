@@ -45,6 +45,9 @@ module Entities
     expose :scorm_bypass_test
     expose :scorm_time_delay_enabled
     expose :scorm_attempt_limit
+    expose :tutorial_self_enrolment_enabled
+    expose :tutorial_self_enrolment_stream_id
+    expose :scorm_attempt_limit
     expose :is_graded
     expose :max_quality_pts
     expose :overseer_image_id, if: ->(unit, options) { staff?(options[:my_role]) }, expose_nil: false
