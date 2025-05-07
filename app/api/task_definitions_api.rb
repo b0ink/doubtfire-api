@@ -38,7 +38,7 @@ class TaskDefinitionsApi < Grape::API
       optional :scorm_bypass_test,        type: Boolean,  desc: 'Whether a student is allowed to upload files before passing SCORM test'
       optional :scorm_time_delay_enabled, type: Boolean,  desc: 'Whether there is an incremental time delay between SCORM test attempts'
       optional :scorm_attempt_limit,      type: Integer,  desc: 'The number of times a SCORM test can be attempted'
-      optional :tutorial_self_enrolment_enabled,        type: Integer,  desc: 'Whether the tutorial self enrolment feature is enabled for this task'
+      optional :tutorial_self_enrolment_enabled,        type: Boolean,  desc: 'Whether the tutorial self enrolment feature is enabled for this task'
       optional :tutorial_self_enrolment_stream_id,      type: Integer,  desc: 'The id of the tutorial stream to fetch tutorials from for self enrolment'
     end
   end
@@ -130,7 +130,7 @@ class TaskDefinitionsApi < Grape::API
       optional :assessment_enabled,       type: Boolean,  desc: 'Enable or disable assessment'
       optional :overseer_image_id,        type: Integer,  desc: 'The id of the Docker image name for overseer'
       optional :moss_language,            type: String,   desc: 'The language to use for code similarity checks'
-      optional :tutorial_self_enrolment_enabled,          type: Integer,  desc: 'Whether the tutorial self enrolment feature is enabled for this task'
+      optional :tutorial_self_enrolment_enabled,          type: Boolean,  desc: 'Whether the tutorial self enrolment feature is enabled for this task'
       optional :tutorial_self_enrolment_stream_id,        type: Integer,  desc: 'The id of the tutorial stream to fetch tutorials from for self enrolment'
     end
   end
