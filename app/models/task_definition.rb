@@ -12,6 +12,7 @@ class TaskDefinition < ApplicationRecord
   belongs_to :unit, optional: false # Foreign key
   belongs_to :group_set, optional: true
   belongs_to :tutorial_stream, optional: true
+  belongs_to :tutorial_self_enrolment_stream, class_name: "TutorialStream", optional: true
   belongs_to :overseer_image, optional: true
 
   has_many :tasks, dependent:  :destroy # Destroying a task definition will also nuke any instances
