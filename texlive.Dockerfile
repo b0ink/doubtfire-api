@@ -1,15 +1,11 @@
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS texlive-builder
 
-# ARG TL_MIRROR="https://texlive.info/CTAN/systems/texlive/tlnet"
 ARG TL_MIRROR="https://mirror.aarnet.edu.au/pub/CTAN/systems/texlive/tlnet"
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   perl \
   curl \
-  imagemagick \
-  inkscape \
-  librsvg2-bin \
   wget \
   ca-certificates \
   xz-utils && \
@@ -36,39 +32,54 @@ ENV PATH $PATH:/opt/texlive/bin/x86_64-linux:/opt/texlive/bin/aarch64-linux:
 
 RUN tlmgr install scheme-basic
 RUN tlmgr install \
-  fontawesome \
-  minted \
-  fvextra \
   catchfile \
-  xstring \
-  framed \
-  lastpage \
-  tcolorbox \
-  environ \
-  pdfcol \
-  tikzfill \
-  markdown \
-  paralist \
   csvsimple \
-  upquote \
-  tagpdf \
-  pdfmanagement-testphase \
+  environ \
+  fontawesome \
   fontspec \
+  framed \
+  fvextra \
+  lastpage \
+  lineno \
+  luacode \
   luaotfload \
   luatexbase \
-  metalogo \
-  luacode \
-  lineno \
-  pdflscape \
   luatextra \
-  pdfpages \
+  markdown \
+  metalogo \
+  minted \
   multirow \
-  newpax
+  newpax \
+  paralist \
+  pdfcol \
+  pdflscape \
+  pdfmanagement-testphase \
+  pdfpages \
+  tagpdf \
+  tcolorbox \
+  tikzfill \
+  upquote \
+  xstring
 
 # Copy in Latex build script, along with asset images
 COPY ./lib/shell/latex_build.sh /texlive/shell/latex_build.sh
 COPY ./public/assets/images /doubtfire/public/assets/images
 
+# Final image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  imagemagick \
+  # inkscape \
+  python3-pygments \
+  librsvg2-bin && \
+  rm -rf /var/lib/apt/lists/*
+
+COPY --from=texlive-builder /opt/texlive /opt/texlive
+COPY --from=texlive-builder /texlive /texlive
+COPY --from=texlive-builder /doubtfire/public/assets/images /doubtfire/public/assets/images
+
+ENV PATH $PATH:/opt/texlive/bin/x86_64-linux:/opt/texlive/bin/aarch64-linux:
 RUN chmod +x /texlive/shell/latex_build.sh
 
 CMD ["sh", "-c", "sleep infinity"]
