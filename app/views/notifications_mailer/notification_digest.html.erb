@@ -58,42 +58,65 @@
                         <%= section[:unit].name %>
                       </div>
 
-                      <% section[:groups].each do |group| %>
-                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 10px 0;">
-                          <tr>
-                            <td style="font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif; background:#fafafa; border-left:4px solid <%= group[:severity] == 'critical' ? '#c62828' : group[:severity] == 'warning' ? '#ed6c02' : '#1565c0' %>; padding:14px 16px; line-height:1.55;">
-                              <div style="font-weight:bold; color:#333; font-size:1.1em; line-height:1.4; padding-bottom:2px;">
-                                <% if group[:task] %>
-                                  <%= group[:task][:abbreviation] %> - <%= group[:task][:name] %>
-                                <% elsif group[:message_subject].present? %>
-                                  <%= group[:message_subject] %>
-                                <% elsif group[:project_id] %>
-                                  Portfolio
-                                <% else %>
-                                  Unit notification
+                      <% section[:group_sections].each do |group_section| %>
+                        <% if group_section[:divider] %>
+                          <div role="separator" style="border-top:solid 1px rgb(225,225,225); margin:20px 0 10px;"></div>
+                        <% end %>
+                        <% if group_section[:heading] %>
+                          <div style="font-size:0.95em; color:#333; font-weight:bold; line-height:1.4; padding:8px 0 8px;">
+                            <%= group_section[:heading] %>
+                          </div>
+                        <% end %>
+                        <% group_section[:groups].each do |group| %>
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:0 0 10px 0;">
+                            <tr>
+                              <td style="font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif; background:#fafafa; border-left:4px solid <%= group[:severity] == 'critical' ? '#c62828' : group[:severity] == 'warning' ? '#ed6c02' : '#1565c0' %>; padding:14px 16px; line-height:1.55;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse; padding-bottom:2px;">
+                                  <tr>
+                                    <td style="font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif; font-weight:bold; color:#333; font-size:1.1em; line-height:1.4;">
+                                      <% if group[:task] %>
+                                        <%= group[:task][:abbreviation] %> - <%= group[:task][:name] %>
+                                      <% elsif group[:message_subject].present? %>
+                                        <%= group[:message_subject] %>
+                                      <% elsif group[:project_id] %>
+                                        Portfolio
+                                      <% else %>
+                                        Unit notification
+                                      <% end %>
+                                    </td>
+                                    <% if group_section[:kind] && group.dig(:task, :due_date) %>
+                                      <td align="right" nowrap style="font-family:Roboto,-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif; padding-left:16px; font-weight:bold; color:#333; font-size:1.1em; line-height:1.4; white-space:nowrap;">
+                                        <%= notification_due_date(group) %>
+                                      </td>
+                                    <% end %>
+                                  </tr>
+                                </table>
+                                <% if group[:task] && group[:task][:student_name].present? %>
+                                  <div style="color:#777; font-size:0.85em;"><%= group[:task][:student_name] %></div>
                                 <% end %>
-                              </div>
-                              <% if group[:task] && group[:task][:student_name].present? %>
-                                <div style="color:#777; font-size:0.85em;"><%= group[:task][:student_name] %></div>
-                              <% end %>
-                              <div style="color:#555;"><%= group[:detail] %></div>
-                              <div style="color:#aaa; font-size:0.8em; padding-top:2px;"><%= notification_timestamp(group) %></div>
-                              <% if group[:task] %>
-                                <div style="padding-top:4px;">
-                                  <a href="<%= @doubtfire_host %>/projects/<%= group[:task][:project_id] %>/dashboard/<%= group[:task][:abbreviation] %><%= '?tutor=true' if group[:task][:staff_view] %>" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
-                                    View this task
-                                  </a>
-                                </div>
-                              <% elsif group[:project_id] %>
-                                <div style="padding-top:4px;">
-                                  <a href="<%= @doubtfire_host %>/projects/<%= group[:project_id] %>/portfolio" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
-                                    View your portfolio
-                                  </a>
-                                </div>
-                              <% end %>
-                            </td>
-                          </tr>
-                        </table>
+                                <% unless group_section[:kind] && group[:event_count] == group[:counts][group_section[:kind]] %>
+                                  <div style="color:#555;"><%= group[:detail] %></div>
+                                <% end %>
+                                <% unless group_section[:kind] %>
+                                  <div style="color:#aaa; font-size:0.8em; padding-top:2px;"><%= notification_timestamp(group) %></div>
+                                <% end %>
+                                <% if group[:task] %>
+                                  <div style="padding-top:4px;">
+                                    <a href="<%= @doubtfire_host %>/projects/<%= group[:task][:project_id] %>/dashboard/<%= group[:task][:abbreviation] %><%= '?tutor=true' if group[:task][:staff_view] %>" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
+                                      View this task
+                                    </a>
+                                  </div>
+                                <% elsif group[:project_id] %>
+                                  <div style="padding-top:4px;">
+                                    <a href="<%= @doubtfire_host %>/projects/<%= group[:project_id] %>/portfolio" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
+                                      View your portfolio
+                                    </a>
+                                  </div>
+                                <% end %>
+                              </td>
+                            </tr>
+                          </table>
+                        <% end %>
                       <% end %>
 
                     </td>

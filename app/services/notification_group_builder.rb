@@ -102,8 +102,8 @@ class NotificationGroupBuilder
 
   def severity_for(items)
     kinds = items.map(&:kind)
-    return 'critical' if kinds.intersect?(%w[discuss_expired pdf_generation_failed portfolio_failed])
-    return 'warning' if kinds.intersect?(%w[discuss_warning overseer_failed] + Notification::MODERATION_KINDS)
+    return 'critical' if kinds.intersect?(%w[discuss_expired pdf_generation_failed portfolio_failed task_overdue])
+    return 'warning' if kinds.intersect?(%w[discuss_warning overseer_failed task_due_soon] + Notification::MODERATION_KINDS)
 
     'normal'
   end
@@ -138,6 +138,9 @@ class NotificationGroupBuilder
     details << 'overseer assessment failed' if counts['overseer_failed'].positive?
     details << 'portfolio compilation failed' if counts['portfolio_failed'].positive?
     details << 'portfolio ready to review' if counts['portfolio_ready'].positive?
+    details << 'ready to start now' if counts['task_start_now'].positive?
+    details << 'due within 5 days' if counts['task_due_soon'].positive?
+    details << 'past its due date' if counts['task_overdue'].positive?
     moderation_notifications = items.select { |notification| Notification::MODERATION_KINDS.include?(notification.kind) }
     if moderation_notifications.any?
       staff_names = moderation_notifications.filter_map { |notification| notification.actor&.name }.uniq

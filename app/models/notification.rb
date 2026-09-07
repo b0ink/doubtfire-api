@@ -4,6 +4,9 @@ class Notification < ApplicationRecord
   KINDS = %w[
     new_task_comment
     task_status_changed
+    task_start_now
+    task_due_soon
+    task_overdue
     overseer_failed
     pdf_generation_failed
     discuss_warning
@@ -21,6 +24,7 @@ class Notification < ApplicationRecord
   MODERATION_KINDS = %w[moderation_note_added moderation_note_reply moderation_note_from_mentee].freeze
   PORTFOLIO_KINDS = %w[portfolio_ready portfolio_failed].freeze
   COMMUNICATION_KINDS = %w[communication_email].freeze
+  TASK_DEADLINE_KINDS = %w[task_start_now task_due_soon task_overdue].freeze
 
   belongs_to :recipient, class_name: 'User', inverse_of: :received_notifications
   belongs_to :unit
@@ -225,6 +229,49 @@ class Notification < ApplicationRecord
     find_by(recipient: recipient, deduplication_key: deduplication_key)
   end
 
+  def self.refresh_task_deadline_notifications!(now: Time.current)
+    stale = where(kind: TASK_DEADLINE_KINDS).unread.includes(task: [:task_definition, { project: %i[unit campus user] }])
+    stale.find_each do |notification|
+      mark_read(where(id: notification.id)) unless notification.current_task_deadline?(now: now)
+    end
+
+    created = 0
+    each_task_deadline_candidate(now: now) do |task|
+      kind = task_deadline_kind(task, now: now)
+      next if kind.nil?
+
+      notification = create_event(
+        recipient: task.student,
+        unit: task.unit,
+        project: task.project,
+        task: task,
+        kind: kind,
+        deduplication_key: task_deadline_key(task, kind)
+      )
+      created += 1 if notification&.previously_new_record?
+    end
+    created
+  end
+
+  def self.task_deadline_kind(task, now: Time.current)
+    return nil unless task_deadline_eligible?(task, now: now)
+
+    today = now.in_time_zone(task.project.campus&.timezone.presence || Time.zone.name).to_date
+    start_date = task.local_start_date.to_date
+    due_date = task.local_due_date.to_date
+
+    return 'task_overdue' if today > due_date
+    return 'task_due_soon' if today >= due_date - 5.days
+    return 'task_start_now' if today >= start_date
+
+    nil
+  end
+
+  def self.task_deadline_key(task, kind)
+    date = kind == 'task_start_now' ? task.local_start_date : task.local_due_date
+    "task-deadline:#{task.id}:#{kind}:#{date.to_date.iso8601}"
+  end
+
   # Moderation notifications stay unread until their recipient marks the tutor note itself as read.
   def self.mark_read(relation, at: Time.current, include_moderation: false)
     relation = relation.where.not(kind: MODERATION_KINDS) unless include_moderation
@@ -291,6 +338,14 @@ class Notification < ApplicationRecord
     email_not_before.blank? || email_not_before <= at
   end
 
+  def current_task_deadline?(now: Time.current)
+    return true unless TASK_DEADLINE_KINDS.include?(kind)
+    return false if task.nil?
+
+    current_kind = self.class.task_deadline_kind(task, now: now)
+    current_kind == kind && deduplication_key == self.class.task_deadline_key(task, kind)
+  end
+
   def self.kind_for_comment(comment)
     case comment
     when TaskStatusComment
@@ -343,5 +398,27 @@ class Notification < ApplicationRecord
     comment.user == comment.project.student || comment.task.role_for(comment.user).in?(%i[student group_member])
   end
 
-  private_class_method :kind_for_comment, :discuss_deadline_for, :recipients_for_comment, :student_actor?
+  def self.each_task_deadline_candidate(now:)
+    Unit.set_active.current_for_date(now).where(send_notifications: true).find_each do |unit|
+      unit.active_projects.includes(:user, :campus).find_each do |project|
+        project.assigned_task_defs.find_each do |task_definition|
+          yield project.task_for_task_definition(task_definition)
+        end
+      end
+    end
+  end
+
+  def self.task_deadline_eligible?(task, now:)
+    task.project.enrolled &&
+      task.unit.active &&
+      task.unit.send_notifications &&
+      task.unit.start_date <= now &&
+      task.unit.end_date >= now &&
+      task.task_definition.target_grade <= task.project.target_grade &&
+      task.submission_date.nil? &&
+      !task.submitted_status?
+  end
+
+  private_class_method :kind_for_comment, :discuss_deadline_for, :recipients_for_comment, :student_actor?,
+                       :each_task_deadline_candidate, :task_deadline_eligible?
 end

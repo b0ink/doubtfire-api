@@ -19,7 +19,7 @@ class SendNotificationDigestJob
                    .email_ready(now)
                    .includes(:recipient, :actor, :unit, { project: :campus }, task: [:task_definition, { project: :user }])
                    .to_a
-    deliverable, skipped = ready.partition { |notification| deliverable?(setting, notification) }
+    deliverable, skipped = ready.partition { |notification| deliverable?(setting, notification, now) }
 
     mark_processed(skipped, now)
     if deliverable.any?
@@ -32,9 +32,10 @@ class SendNotificationDigestJob
 
   private
 
-  def deliverable?(setting, notification)
+  def deliverable?(setting, notification, now)
     notification.unit.send_notifications &&
       !notification.recipient_withdrawn? &&
+      notification.current_task_deadline?(now: now) &&
       setting.delivers?(notification.unit, notification.kind, :email)
   end
 
