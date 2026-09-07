@@ -60,7 +60,6 @@ class CreateNotificationsAndPreferences < ActiveRecord::Migration[8.0]
       t.string :digest_time, null: false, default: '07:00', limit: 5
       t.string :digest_timezone, null: false, limit: 64
       t.integer :digest_weekday, null: false, default: 1
-      t.boolean :weekly_summary, null: false, default: true
       t.datetime :next_digest_at
       t.datetime :last_digest_at
 

@@ -18,7 +18,6 @@ class NotificationSettingTest < ActiveSupport::TestCase
     assert_equal '07:00', settings.digest_time
     assert_equal NotificationSetting.default_digest_timezone, settings.digest_timezone
     assert_equal 1, settings.digest_weekday
-    assert settings.weekly_summary
     assert_equal %w[in_app email], settings.channels['new_task_comment']
     assert_equal ['in_app'], settings.channels['communication_email']
     assert_equal Notification::KINDS.sort, settings.channels.keys.sort
@@ -54,7 +53,7 @@ class NotificationSettingTest < ActiveSupport::TestCase
     assert_empty settings.channels_for_unit_id(unit.id, 'new_task_comment')
   end
 
-  def test_weekly_summary_honours_the_global_setting_and_unit_mute
+  def test_weekly_summary_honours_the_unit_mute
     settings = NotificationSetting.for(FactoryBot.create(:user))
     unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
 
@@ -62,10 +61,6 @@ class NotificationSettingTest < ActiveSupport::TestCase
 
     FactoryBot.create(:notification_unit_override, user: settings.user, unit: unit, muted: true)
     assert_not settings.weekly_summary_for?(unit)
-
-    settings.update!(weekly_summary: false)
-    other_unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
-    assert_not settings.weekly_summary_for?(other_unit)
   end
 
   def test_a_muted_unit_keeps_following_the_defaults_underneath

@@ -65,8 +65,6 @@ class NotificationSetting < ApplicationRecord
   end
 
   def weekly_summary_for?(unit)
-    return false unless weekly_summary
-
     override = user.notification_unit_overrides.find_by(unit_id: unit&.id)
     !override&.muted
   end

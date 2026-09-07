@@ -189,7 +189,6 @@ class NotificationsApiTest < ActiveSupport::TestCase
              digest_start_time: '09:00',
              digest_time: '10:30',
              digest_weekday: 1,
-             weekly_summary: false,
              units: [{ unit_id: @unit.id, muted: true }]
 
     assert_equal 200, last_response.status
@@ -209,7 +208,6 @@ class NotificationsApiTest < ActiveSupport::TestCase
              digest_frequency: 'daily',
              digest_time: '10:30',
              digest_weekday: 1,
-             weekly_summary: true,
              units: []
 
     assert_equal 200, last_response.status
@@ -224,7 +222,6 @@ class NotificationsApiTest < ActiveSupport::TestCase
              digest_frequency: 'daily',
              digest_time: '10:30',
              digest_weekday: 1,
-             weekly_summary: true,
              units: [{ unit_id: inaccessible.id, muted: true }]
 
     assert_equal 200, last_response.status

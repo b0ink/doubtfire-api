@@ -157,7 +157,6 @@ class NotificationsApi < Grape::API
     optional :digest_start_time, type: String
     optional :digest_time, type: String
     optional :digest_weekday, type: Integer
-    optional :weekly_summary, type: Boolean
     optional :units, type: Array do
       requires :unit_id, type: Integer
       requires :muted, type: Boolean

@@ -10,7 +10,6 @@ module Entities
       settings.resolved_digest_timezone
     end
     expose :digest_weekday
-    expose :weekly_summary
     expose :next_digest_at
     expose :last_digest_at
     expose :units, using: NotificationUnitOverrideEntity do |settings|

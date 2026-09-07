@@ -382,7 +382,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_03_013550) do
     t.string "digest_time", limit: 5, default: "07:00", null: false
     t.string "digest_timezone", limit: 64, null: false
     t.integer "digest_weekday", default: 1, null: false
-    t.boolean "weekly_summary", default: true, null: false
     t.datetime "next_digest_at"
     t.datetime "last_digest_at"
     t.datetime "created_at", null: false
