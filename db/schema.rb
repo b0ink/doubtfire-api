@@ -378,7 +378,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_09_03_013550) do
     t.text "channels", size: :long, null: false, collation: "utf8mb4_bin"
     t.string "digest_frequency", limit: 16, default: "weekly", null: false
     t.integer "digest_interval_hours", default: 4, null: false
-    t.string "digest_start_time", limit: 5, default: "08:00", null: false
+    t.string "digest_start_time", limit: 5, default: "07:00", null: false
     t.string "digest_time", limit: 5, default: "07:00", null: false
     t.string "digest_timezone", limit: 64, null: false
     t.integer "digest_weekday", default: 1, null: false

@@ -56,7 +56,7 @@ class CreateNotificationsAndPreferences < ActiveRecord::Migration[8.0]
       t.string :digest_frequency, null: false, default: 'weekly', limit: 16
       t.integer :digest_interval_hours, null: false, default: 4
       # The wall-clock anchor for intervals that continue through the night.
-      t.string :digest_start_time, null: false, default: '08:00', limit: 5
+      t.string :digest_start_time, null: false, default: '07:00', limit: 5
       t.string :digest_time, null: false, default: '07:00', limit: 5
       t.string :digest_timezone, null: false, limit: 64
       t.integer :digest_weekday, null: false, default: 1
