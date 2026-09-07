@@ -1,6 +1,18 @@
 # frozen_string_literal: true
 
 class NotificationGroupBuilder
+  EVENT_DETAILS = {
+    'discuss_expired' => 'discussion deadline missed',
+    'discuss_warning' => 'discussion deadline approaching',
+    'pdf_generation_failed' => 'submission PDF generation failed',
+    'overseer_failed' => 'overseer assessment failed',
+    'portfolio_failed' => 'portfolio compilation failed',
+    'portfolio_ready' => 'portfolio ready to review',
+    'task_start_now' => 'ready to start now',
+    'task_due_soon' => 'due within 5 days',
+    'task_overdue' => 'past its due date'
+  }.freeze
+
   def initialize(notifications)
     @notifications = notifications.to_a
   end
@@ -127,33 +139,46 @@ class NotificationGroupBuilder
   # What happened, without the task it happened to, so callers can show the two
   # separately rather than splitting the summary back apart.
   def detail_for(items, counts, latest_status)
-    details = []
-    if counts['communication_email'].positive?
-      sender = items.max_by(&:created_at).actor&.name
-      details << (sender.present? ? "Message from #{sender}" : 'Message')
-    end
-    details << 'discussion deadline missed' if counts['discuss_expired'].positive?
-    details << 'discussion deadline approaching' if counts['discuss_warning'].positive?
-    details << 'submission PDF generation failed' if counts['pdf_generation_failed'].positive?
-    details << 'overseer assessment failed' if counts['overseer_failed'].positive?
-    details << 'portfolio compilation failed' if counts['portfolio_failed'].positive?
-    details << 'portfolio ready to review' if counts['portfolio_ready'].positive?
-    details << 'ready to start now' if counts['task_start_now'].positive?
-    details << 'due within 5 days' if counts['task_due_soon'].positive?
-    details << 'past its due date' if counts['task_overdue'].positive?
-    moderation_notifications = items.select { |notification| Notification::MODERATION_KINDS.include?(notification.kind) }
-    if moderation_notifications.any?
-      staff_names = moderation_notifications.filter_map { |notification| notification.actor&.name }.uniq
-      moderation_detail = pluralize(moderation_notifications.count, 'moderation note')
-      moderation_detail += " from #{staff_names.to_sentence}" if staff_names.any?
-      details << moderation_detail
-    end
-    details << pluralize(counts['new_task_comment'], 'new comment') if counts['new_task_comment'].positive?
-    details << "task status changed to #{status_name(latest_status)}" if latest_status.present?
+    details = [
+      communication_detail(items, counts),
+      *event_details(counts),
+      moderation_detail(items),
+      comment_detail(counts),
+      status_detail(latest_status)
+    ].compact
 
     # Sentence case, so a single detail reads as a heading and several still join
     # into one readable sentence.
     details.to_sentence.upcase_first
+  end
+
+  def communication_detail(items, counts)
+    return unless counts['communication_email'].positive?
+
+    sender = items.max_by(&:created_at).actor&.name
+    sender.present? ? "Message from #{sender}" : 'Message'
+  end
+
+  def event_details(counts)
+    EVENT_DETAILS.filter_map { |kind, detail| detail if counts[kind].positive? }
+  end
+
+  def moderation_detail(items)
+    moderation_notifications = items.select { |notification| Notification::MODERATION_KINDS.include?(notification.kind) }
+    return if moderation_notifications.empty?
+
+    staff_names = moderation_notifications.filter_map { |notification| notification.actor&.name }.uniq
+    detail = pluralize(moderation_notifications.count, 'moderation note')
+    staff_names.any? ? "#{detail} from #{staff_names.to_sentence}" : detail
+  end
+
+  def comment_detail(counts)
+    count = counts['new_task_comment']
+    pluralize(count, 'new comment') if count.positive?
+  end
+
+  def status_detail(latest_status)
+    "task status changed to #{status_name(latest_status)}" if latest_status.present?
   end
 
   def status_name(status_key)
