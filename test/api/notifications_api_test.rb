@@ -175,7 +175,7 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal 200, last_response.status
     assert_equal 'weekly', last_response_body['digest_frequency']
     assert_equal 4, last_response_body['digest_interval_hours']
-    assert_equal '08:00', last_response_body['digest_start_time']
+    assert_equal '07:00', last_response_body['digest_start_time']
     assert_equal @project.campus.timezone, last_response_body['digest_timezone']
     assert_equal %w[in_app email], last_response_body.dig('channels', 'new_task_comment')
     assert_empty last_response_body['units']

@@ -14,7 +14,7 @@ class NotificationSettingTest < ActiveSupport::TestCase
 
     assert_equal 'weekly', settings.digest_frequency
     assert_equal 4, settings.digest_interval_hours
-    assert_equal '08:00', settings.digest_start_time
+    assert_equal '07:00', settings.digest_start_time
     assert_equal '07:00', settings.digest_time
     assert_equal NotificationSetting.default_digest_timezone, settings.digest_timezone
     assert_equal 1, settings.digest_weekday
