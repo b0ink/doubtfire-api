@@ -125,7 +125,7 @@ class TaskDeadlineNotificationJobTest < ActiveSupport::TestCase
         assert_includes html, due_text
       end
       assert_equal 1, text.scan('7th September 2026 at 09:00').count
-      assert_includes html, 'align="right"'
+      assert_includes html, 'justify-content:space-between'
       start_heading = text.index('Tasks ready to start')
       due_heading = text.index('Tasks due within five days')
       overdue_heading = text.index('Tasks past due')
@@ -137,7 +137,7 @@ class TaskDeadlineNotificationJobTest < ActiveSupport::TestCase
       updates_heading = text.index('Task updates')
       assert_operator text.index("- #{overdue_task.task_definition.abbreviation} -"), :<, updates_heading
       assert_operator updates_heading, :<, text.index('- Portfolio')
-      assert_includes html, 'role="separator"'
+      assert_includes html, '<hr '
       assert_no_emails do
         SendNotificationDigestJob.new.perform(settings.id)
       end
