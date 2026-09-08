@@ -2325,28 +2325,43 @@ class Unit < ApplicationRecord
 
     # All active projects with a compiled portfolio
     portfolio_projects = active_projects.select(&:portfolio_available)
-    progress_callback.call(message: "Initialising portfolio download", total_rows: portfolio_projects.count, rows_processed: portfolio_projects.count) if progress_callback
+    portfolio_count = portfolio_projects.count
+    if File.exist?(portfolio_zip_name)
+      progress_callback&.call(message: "Using cached portfolio download", total_rows: portfolio_count, rows_processed: portfolio_count)
+      return portfolio_zip_name
+    end
 
-    return portfolio_zip_name if File.exist?(portfolio_zip_name)
-
-    progress_callback.call(message: "Initialising portfolio download", total_rows: portfolio_projects.count, rows_processed: 0) if progress_callback
+    progress_callback&.call(message: "Compressing portfolios", total_rows: portfolio_count, rows_processed: 0)
     count = 0
+    temporary_zip_name = "#{portfolio_zip_name}.tmp"
+    FileUtils.rm_f(temporary_zip_name)
 
-    # Create a new zip
-    Zip::File.open(portfolio_zip_name, Zip::File::CREATE) do |zip|
+    # Zip::File#add defers compression until the archive closes, which makes
+    # progress reach 100% before the expensive work starts. OutputStream writes
+    # each entry immediately so the count represents completed compression.
+    Zip::OutputStream.open(temporary_zip_name) do |zip|
       portfolio_projects.each do |project|
-        count += 1
-        progress_callback.call(message: "Compressing portfolios", rows_processed: count) if progress_callback
-
         # Add file to zip in grade folder
         src_path = project.portfolio_path
         dst_path = FileHelper.sanitized_path(project.target_grade_desc.to_s, "#{project.student.username}-portfolio (#{project.tutors_and_tutorial})") + '.pdf'
 
-        # copy into zip
-        zip.add(dst_path, src_path)
+        zip.put_next_entry(dst_path)
+        File.open(src_path, 'rb') do |source|
+          while (chunk = source.read(1.megabyte))
+            zip.write(chunk)
+          end
+        end
+
+        count += 1
+        progress_callback&.call(message: "Compressing portfolios", rows_processed: count) if count < portfolio_count
       end # active_projects
-    end # zip
+    end
+
+    FileUtils.mv(temporary_zip_name, portfolio_zip_name)
+    progress_callback&.call(message: "Compressing portfolios", rows_processed: count)
     portfolio_zip_name
+  ensure
+    FileUtils.rm_f(temporary_zip_name) if defined?(temporary_zip_name) && temporary_zip_name
   end
 
   #

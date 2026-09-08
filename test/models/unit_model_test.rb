@@ -1041,11 +1041,21 @@ class UnitModelTest < ActiveSupport::TestCase
       paths << p.portfolio_path
     end
 
-    filename = unit.get_portfolio_zip(unit.main_convenor_user)
+    progress_updates = []
+    filename = unit.get_portfolio_zip(
+      unit.main_convenor_user,
+      progress_callback: ->(**progress) { progress_updates << progress }
+    )
     assert File.exist? filename
     Zip::File.open(filename) do |zip_file|
       assert_equal unit.active_projects.count, zip_file.count
     end
+
+    compression_updates = progress_updates.select { |update| update[:message] == 'Compressing portfolios' }
+    assert_equal 0, compression_updates.first[:rows_processed]
+    assert_equal unit.active_projects.count, compression_updates.first[:total_rows]
+    assert_equal (0..unit.active_projects.count).to_a, compression_updates.map { |update| update[:rows_processed] }
+
     FileUtils.rm filename
 
     unit.destroy!
