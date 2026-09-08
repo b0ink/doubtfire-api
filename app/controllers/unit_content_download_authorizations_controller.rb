@@ -54,7 +54,7 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
       nil,
       {
         'accept-ranges' => 'bytes',
-        'cache-control' => 'private, no-cache',
+        'cache-control' => 'private, max-age=300',
         'content-disposition' => disposition,
         'x-content-site-id' => result[:site].id.to_s
       },
