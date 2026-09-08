@@ -97,6 +97,13 @@ module Doubtfire
       credential_value.nil? ? ENV.fetch(env_key, default) : credential_value
     end
 
+    def self.cors_origin_for(host)
+      host = host.to_s.strip
+      return host if host.start_with?('http://', 'https://')
+
+      "https://#{host}"
+    end
+
     # ==> Log to stdout
     config.log_to_stdout = Application.fetch_boolean_env('DF_LOG_TO_STDOUT')
 
@@ -296,12 +303,29 @@ module Doubtfire
       Rails.root.join('app/models/d2l')
 
     # CORS config
+    # Configure a strict allowlist. Override per environment via:
+    # CORS_ALLOWED_ORIGINS="http://localhost:4200,https://frontend.example.edu"
+    default_cors_origins = [
+      'http://localhost:4200',
+      Application.cors_origin_for(config.institution[:host])
+    ].uniq
+    allowed_cors_origins = ENV.fetch('CORS_ALLOWED_ORIGINS', default_cors_origins.join(','))
+                              .split(',')
+                              .map(&:strip)
+                              .reject(&:empty?)
+                              .uniq
+
     config.middleware.insert_before Rack::MethodOverride, SentryTunnelMiddleware
 
     config.middleware.insert_before Warden::Manager, Rack::Cors do
       allow do
-        origins '*'
-        resource '*', headers: :any, methods: %i(get post put delete options)
+        origins do |source, _env|
+          allowed_cors_origins.include?(source)
+        end
+
+        resource '*',
+                 headers: :any,
+                 methods: %i[get post put patch delete options head]
       end
     end
 
@@ -322,6 +346,9 @@ module Doubtfire
 
     config.sm_instance = nil
     config.overseer_enabled = ENV['OVERSEER_ENABLED'].present? && ENV['OVERSEER_ENABLED'].to_s.downcase != "false" && ENV['OVERSEER_ENABLED'].to_i != 0
+
+    # Enables endpoints to return available storage on the device hosting the API.
+    config.disk_space_endpoint_enabled = %w[true 1 yes].include?(ENV['DISK_SPACE_ENDPOINT_ENABLED']&.downcase)
 
     config.docker_config = {
       DOCKER_REGISTRY_URL: ENV.fetch('DOCKER_REGISTRY_URL', nil),
@@ -364,10 +391,6 @@ module Doubtfire
       if config.overseer_workdir_volume_mount.nil? && config.overseer_fallback_volume_container.nil?
         raise 'Overseer configuration error: you must set either OVERSEER_WORKDIR_VOLUME_MOUNT or OVERSEER_FALLBACK_VOLUME_CONTAINER.'
       end
-
-      # Enables the endpoint to return how much available storage is left on the device the API is hosted on (often docker volume storage)
-      # Used to ensure enough space is available to pull new images for Overseer
-      config.disk_space_endpoint_enabled = %w[true 1 yes].include?(ENV['DISK_SPACE_ENDPOINT_ENABLED']&.downcase)
 
       config.after_initialize do
         if config.docker_config[:DOCKER_TOKEN] && config.docker_config[:DOCKER_PROXY_URL]
