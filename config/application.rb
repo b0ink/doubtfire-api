@@ -46,6 +46,10 @@ module Doubtfire
     # variable.
     config.student_work_dir = ENV['DF_STUDENT_WORK_DIR'] || Rails.root.join('student_work').to_s
 
+    # Shared secret used to authenticate Caddy's internal file-authorisation
+    # requests. A blank value keeps the internal endpoints disabled.
+    config.caddy_download_auth_secret = ENV.fetch('CADDY_DOWNLOAD_AUTH_SECRET', nil)
+
     # ==> Archive directory
     # File server location for storing archived student work. Defaults to a subfolder of student work
     # Set using DF_ARCHIVE_DIR environment variable.

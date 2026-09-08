@@ -38,7 +38,7 @@ class PdfFileDownloadAuthorizationsController < ApplicationController
   private
 
   def trusted_caddy_request?
-    expected = ENV.fetch('DF_CADDY_DOWNLOAD_AUTH_SECRET', '')
+    expected = Doubtfire::Application.config.caddy_download_auth_secret.to_s
     provided = request.headers[INTERNAL_SECRET_HEADER].to_s
     return false if expected.blank? || provided.blank?
 
