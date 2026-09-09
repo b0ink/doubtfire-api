@@ -4,6 +4,7 @@ class TaskDownloadsController < ApplicationController
   include AuthenticationHelpers
   include AuthorisationHelpers
   include LogHelper
+  include TaskSubmissionFilesDownloadAuthentication
 
   class MyException < RuntimeError
     attr_reader :status
@@ -19,25 +20,30 @@ class TaskDownloadsController < ApplicationController
 
   # desc "Retrieve tasks for a unit"
   def index
-    unless authenticated?
+    download_user = authenticated_task_submission_files_download_user(
+      unit_id: params[:id],
+      task_definition_id: params[:task_def_id]
+    )
+
+    unless download_user
       error!({ error: "Not authorised to download tasks for unit '#{params[:id]}'" }, 401)
     end
 
     unit = Unit.find(params[:id])
 
-    unless authorise? current_user, unit, :get_students
+    unless authorise? download_user, unit, :get_students
       error!({ error: "Not authorised to download tasks for unit '#{params[:id]}'" }, 401)
     end
 
     td = unit.task_definitions.find(params[:task_def_id])
 
-    output_zip = unit.get_task_submissions_zip(current_user, td)
+    output_zip = unit.get_task_submissions_zip(download_user, td)
 
     error!({ error: 'No files to download' }, 403) if output_zip.nil?
 
     # Set download headers...
     # content_type "application/octet-stream"
-    download_id = "#{Time.zone.now.strftime('%Y-%m-%d %H:%m:%S')}-#{unit.code}-#{td.abbreviation}-#{current_user.username}-files"
+    download_id = "#{Time.zone.now.strftime('%Y-%m-%d %H:%m:%S')}-#{unit.code}-#{td.abbreviation}-#{download_user.username}-files"
     download_id.gsub! /[\\\/]/, '-'
     download_id = FileHelper.sanitized_filename(download_id)
     # header['Content-Disposition'] = "attachment; filename=#{download_id}.zip"

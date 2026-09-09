@@ -6,6 +6,10 @@ Doubtfire::Application.routes.draw do
   get 'api/submission/unit/:id/task_definitions/:task_def_id/student_pdfs', to: 'task_submission_pdfs#index'
   get 'api/units/:id/all_resources', to: 'lecture_resource_downloads#index'
   post 'api/submission/unit/:id/portfolio/access', to: 'portfolio_download_authorizations#create'
+  post 'api/submission/unit/:id/task_definitions/:task_def_id/download_submissions/access',
+       to: 'task_submission_files_download_authorizations#create'
+  post 'api/submission/unit/:id/task_definitions/:task_def_id/student_pdfs/access',
+       to: 'task_submission_pdfs_download_authorizations#create'
   get 'api/units/:unit_id/content/sites/:site_id/files', to: 'unit_content_download_authorizations#serve'
   get 'api/units/:unit_id/content/sites/:site_id/files/*route',
       to: 'unit_content_download_authorizations#serve',
@@ -17,6 +21,8 @@ Doubtfire::Application.routes.draw do
   # The file is then served via Caddy
   get 'api/internal/downloads/submission', to: 'submission_download_authorizations#show'
   get 'api/internal/downloads/portfolio', to: 'portfolio_download_authorizations#show'
+  get 'api/internal/downloads/task-submission-files', to: 'task_submission_files_download_authorizations#show'
+  get 'api/internal/downloads/task-submission-pdfs', to: 'task_submission_pdfs_download_authorizations#show'
   get 'api/internal/downloads/pdf-file', to: 'pdf_file_download_authorizations#show'
   get 'api/internal/downloads/unit-content', to: 'unit_content_download_authorizations#show'
 
