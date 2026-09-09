@@ -53,6 +53,37 @@ class UnitContentSiteTest < ActiveSupport::TestCase
     end
   end
 
+  def test_replacing_an_archive_updates_the_content_version_and_served_files
+    Dir.mktmpdir('unit-content-storage') do |storage_dir|
+      Tempfile.create(['original-content', '.zip']) do |original_archive|
+        Tempfile.create(['replacement-content', '.zip']) do |replacement_archive|
+          write_zip(original_archive.path, 'index.html' => 'Original content')
+          write_zip(replacement_archive.path, 'index.html' => 'Replacement content')
+
+          unit = FactoryBot.create(:unit, with_students: false, stream_count: 0)
+          site = nil
+
+          UnitContentSite.stub(:archive_dir_for, storage_dir) do
+            site = UnitContentSite.store_upload!(
+              unit,
+              { filename: 'content.zip', tempfile: original_archive }
+            )
+            original_version = site.content_version
+
+            site.replace_upload!(
+              { filename: 'content.zip', tempfile: replacement_archive }
+            )
+
+            assert_not_equal original_version, site.content_version
+            assert_equal 'Replacement content', File.read(File.join(site.served_dir, 'index.html'))
+          end
+        ensure
+          site&.destroy!
+        end
+      end
+    end
+  end
+
   private
 
   def create_site(archive_path)
