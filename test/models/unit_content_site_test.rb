@@ -57,8 +57,8 @@ class UnitContentSiteTest < ActiveSupport::TestCase
     Dir.mktmpdir('unit-content-storage') do |storage_dir|
       Tempfile.create(['original-content', '.zip']) do |original_archive|
         Tempfile.create(['replacement-content', '.zip']) do |replacement_archive|
-          write_zip(original_archive.path, 'index.html' => 'Original content')
-          write_zip(replacement_archive.path, 'index.html' => 'Replacement content')
+          write_zip(original_archive.path, 'content.txt' => 'Original content')
+          write_zip(replacement_archive.path, 'content.txt' => 'Replacement content')
 
           unit = FactoryBot.create(:unit, with_students: false, stream_count: 0)
           site = nil
@@ -75,7 +75,7 @@ class UnitContentSiteTest < ActiveSupport::TestCase
             )
 
             assert_not_equal original_version, site.content_version
-            assert_equal 'Replacement content', File.read(File.join(site.served_dir, 'index.html'))
+            assert_equal 'Replacement content', File.read(File.join(site.served_dir, 'content.txt'))
           end
         ensure
           site&.destroy!
