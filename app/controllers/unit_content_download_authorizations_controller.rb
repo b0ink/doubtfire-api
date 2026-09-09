@@ -8,7 +8,11 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
 
   skip_after_action :verify_same_origin_request, only: :serve
 
-  CONTENT_PATH = %r{\A/api/units/(?<unit_id>\d+)/content/sites/(?<site_id>\d+)/files(?<route>/[^?]*)?(?:\?.*)?\z}
+  CONTENT_VERSION = '[0-9a-f]{64}'.freeze
+  CONTENT_PATH = %r{\A/api/units/(?<unit_id>\d+)/content/sites/(?<site_id>\d+)/files(?:/v/(?<content_version>#{CONTENT_VERSION}))?(?<route>/[^?]*)?(?:\?.*)?\z}
+  VERSIONED_ROUTE = %r{\Av/(?<content_version>#{CONTENT_VERSION})(?<route>/.*)?\z}
+  VERSIONED_CACHE_CONTROL = 'private, max-age=604800, immutable'.freeze
+  LEGACY_CACHE_CONTROL = 'private, no-cache'.freeze
   INTERNAL_SECRET_HEADER = 'X-OnTrack-Download-Auth'.freeze
   ORIGINAL_URI_HEADER = 'X-Forwarded-Uri'.freeze
 
@@ -21,7 +25,8 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
     result = authorised_content(
       unit_id: route_params[:unit_id],
       site_id: route_params[:site_id],
-      route: route_params[:route]
+      route: route_params[:route],
+      content_version: route_params[:content_version]
     )
     return head result unless result.is_a?(Hash)
 
@@ -35,14 +40,17 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
     response.set_header('X-OnTrack-Content-Disposition', disposition)
     response.set_header('X-OnTrack-Content-Type', content_type)
     response.set_header('X-OnTrack-Content-Site-Id', result[:site].id.to_s)
+    response.set_header('X-OnTrack-Cache-Control', result[:cache_control])
     head :ok
   end
 
   def serve
+    route, content_version = route_and_version(params[:route])
     result = authorised_content(
       unit_id: params[:unit_id],
       site_id: params[:site_id],
-      route: params[:route]
+      route: route,
+      content_version: content_version
     )
     return head result unless result.is_a?(Hash)
 
@@ -54,7 +62,7 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
       nil,
       {
         'accept-ranges' => 'bytes',
-        'cache-control' => 'private, max-age=300',
+        'cache-control' => result[:cache_control],
         'content-disposition' => disposition,
         'x-content-site-id' => result[:site].id.to_s
       },
@@ -95,7 +103,7 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
     user
   end
 
-  def authorised_content(unit_id:, site_id:, route:)
+  def authorised_content(unit_id:, site_id:, route:, content_version: nil)
     user = authenticated_content_user
     return :unauthorized unless user
 
@@ -105,12 +113,29 @@ class UnitContentDownloadAuthorizationsController < ApplicationController
 
     site = unit.unit_content_sites.find_by(id: site_id)
     return :not_found unless site
+    return :not_found if content_version.present? && !valid_content_version?(site, content_version)
 
     file_path = site.served_file_path(route.presence || '/')
     resolved_path, relative_path = authorised_file_path(file_path, site.served_dir)
     return :not_found unless resolved_path
 
-    { site: site, path: resolved_path, relative_path: relative_path }
+    {
+      site: site,
+      path: resolved_path,
+      relative_path: relative_path,
+      cache_control: content_version.present? ? VERSIONED_CACHE_CONTROL : LEGACY_CACHE_CONTROL
+    }
+  end
+
+  def route_and_version(route)
+    match = VERSIONED_ROUTE.match(route.to_s)
+    return [route, nil] unless match
+
+    [match[:route], match[:content_version]]
+  end
+
+  def valid_content_version?(site, content_version)
+    ActiveSupport::SecurityUtils.secure_compare(site.content_version, content_version)
   end
 
   def content_type_for(path)

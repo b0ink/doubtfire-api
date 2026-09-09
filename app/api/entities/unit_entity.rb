@@ -47,6 +47,9 @@ module Entities
     expose :main_content_site_id, unless: :summary_only do |unit|
       unit.unit_content_sites.find_by(is_main: true)&.id
     end
+    expose :content_site_versions, unless: :summary_only do |unit|
+      unit.unit_content_sites.pluck(:id, :content_version).to_h
+    end
     expose :unit_content_links,
            as: :content_links,
            using: UnitContentLinkEntity,

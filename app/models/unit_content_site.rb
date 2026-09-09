@@ -1,5 +1,6 @@
 require 'fileutils'
 require 'digest/sha1'
+require 'digest/sha2'
 require 'cgi'
 require 'pathname'
 require 'securerandom'
@@ -13,13 +14,17 @@ class UnitContentSite < ApplicationRecord
   MAX_ARCHIVE_ENTRIES = 20_000
   MAX_EXTRACTED_BYTES = 2.gigabytes
   MAX_ENTRY_BYTES = 256.megabytes
+  CONTENT_REWRITE_VERSION = 1
 
   belongs_to :unit
   has_many :unit_content_links, dependent: :destroy
 
   validates :name, :original_filename, :archive_path, presence: true
+  validates :content_version, presence: true, format: { with: /\A[0-9a-f]{64}\z/ }
   validates :name, uniqueness: { scope: :unit_id, case_sensitive: false }
   validates :root_dir, presence: true
+
+  before_validation :refresh_content_version, if: :content_version_needs_refresh?
 
   after_destroy :delete_content_files
 
@@ -38,6 +43,7 @@ class UnitContentSite < ApplicationRecord
       original_filename: original_filename,
       root_dir: '/',
       is_main: unit.unit_content_sites.none?,
+      content_version: content_version_for(file[:tempfile].path, '/'),
       archive_path: File.join(
         archive_dir,
         "#{SecureRandom.hex(8)}-#{FileHelper.sanitized_filename(original_filename)}"
@@ -67,11 +73,16 @@ class UnitContentSite < ApplicationRecord
     replacement_root_dir =
       root_dir.presence ||
       (replacement_root_options.include?(self.root_dir) ? self.root_dir : '/')
+    replacement_content_version = self.class.content_version_for(
+      replacement_archive_path,
+      replacement_root_dir
+    )
 
     update!(
       original_filename: replacement_original_filename,
       archive_path: replacement_archive_path,
-      root_dir: replacement_root_dir
+      root_dir: replacement_root_dir,
+      content_version: replacement_content_version
     )
     extract_for_serving!
     FileUtils.rm_f original_archive_path if original_archive_path.present?
@@ -92,6 +103,12 @@ class UnitContentSite < ApplicationRecord
     root_dir_options_from_entries(archive_entries_for(archive_path))
   rescue Zip::Error
     ['/']
+  end
+
+  def self.content_version_for(archive_path, root_dir)
+    archive_hash = Digest::SHA256.file(archive_path).hexdigest
+    normalized_root = root_dir.to_s.gsub(%r{\A/+|/+\z}, '')
+    Digest::SHA256.hexdigest("#{CONTENT_REWRITE_VERSION}:#{archive_hash}:#{normalized_root}")
   end
 
   def self.archive_entries_for(archive_path)
@@ -187,7 +204,7 @@ class UnitContentSite < ApplicationRecord
   end
 
   def public_files_path
-    "/api/units/#{unit_id}/content/sites/#{id}/files"
+    "/api/units/#{unit_id}/content/sites/#{id}/files/v/#{content_version}"
   end
 
   def served_file_path(route)
@@ -228,6 +245,16 @@ class UnitContentSite < ApplicationRecord
   end
 
   private
+
+  def content_version_needs_refresh?
+    return false unless File.file?(archive_path.to_s)
+
+    content_version.blank? || will_save_change_to_archive_path? || will_save_change_to_root_dir?
+  end
+
+  def refresh_content_version
+    self.content_version = self.class.content_version_for(archive_path, root_dir)
+  end
 
   def extract_archive_into!(destination)
     entry_count = 0
@@ -315,7 +342,7 @@ class UnitContentSite < ApplicationRecord
     end
 
     result.gsub!(
-      %r{(<(?:iframe|img|link|script|source|video|audio)\b[^>]*?\b(?:href|poster|src)=)(["'])(/(?!/)[^"']*)\2}i
+      %r{(<(?:a|iframe|img|link|script|source|video|audio)\b[^>]*?\b(?:href|poster|src)=)(["'])(/(?!/)[^"']*)\2}i
     ) do
       "#{Regexp.last_match(1)}#{Regexp.last_match(2)}#{canonical_reference(Regexp.last_match(3))}#{Regexp.last_match(2)}"
     end
