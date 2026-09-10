@@ -27,10 +27,15 @@ class NotificationsApi < Grape::API
     end
 
     def unread_group_count
-      rows = current_user.received_notifications.unread.pluck(:id, :task_id, :project_id, :unit_id, :kind, :unit_role_id)
-      rows.select { |_id, _task_id, _project_id, unit_id, kind, _unit_role_id| notification_settings.shows_in_app?(unit_id, kind) }.map do |id, task_id, project_id, unit_id, kind, unit_role_id|
+      rows = current_user.received_notifications.unread.pluck(
+        :id, :task_id, :project_id, :unit_id, :kind, :unit_role_id, :email_sent_at
+      )
+      rows.select { |_id, _task_id, _project_id, unit_id, kind, _unit_role_id, _email_sent_at| notification_settings.shows_in_app?(unit_id, kind) }.map do |id, task_id, project_id, unit_id, kind, unit_role_id, email_sent_at|
         if Notification::MODERATION_KINDS.include?(kind)
           "tutor-notes:#{unit_role_id}:#{task_id}"
+        elsif kind == 'feedback_warning'
+          batch = email_sent_at ? "emailed:#{email_sent_at.to_f}" : 'not-emailed'
+          "unit:#{unit_id}:feedback-warning:#{batch}"
         elsif task_id.present?
           "task:#{task_id}"
         elsif Notification::COMMUNICATION_KINDS.include?(kind)

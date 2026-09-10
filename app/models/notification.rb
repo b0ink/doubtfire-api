@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'set'
+
 class Notification < ApplicationRecord
   KINDS = %w[
     new_task_comment
@@ -7,6 +9,7 @@ class Notification < ApplicationRecord
     task_start_now
     task_due_soon
     task_overdue
+    feedback_warning
     overseer_failed
     pdf_generation_failed
     discuss_warning
@@ -25,6 +28,7 @@ class Notification < ApplicationRecord
   PORTFOLIO_KINDS = %w[portfolio_ready portfolio_failed].freeze
   COMMUNICATION_KINDS = %w[communication_email].freeze
   TASK_DEADLINE_KINDS = %w[task_start_now task_due_soon task_overdue].freeze
+  FEEDBACK_WARNING_KINDS = %w[feedback_warning].freeze
 
   belongs_to :recipient, class_name: 'User', inverse_of: :received_notifications
   belongs_to :unit
@@ -253,6 +257,52 @@ class Notification < ApplicationRecord
     created
   end
 
+  def self.refresh_feedback_warning_notifications!(now: Time.current, started_at: nil)
+    stale = where(kind: FEEDBACK_WARNING_KINDS).unread.includes(
+      :recipient,
+      task: [
+        :task_definition,
+        {
+          project: [
+            :campus,
+            { tutorial_enrolments: { tutorial: { unit_role: :user } } },
+            { unit: [{ teaching_period: :breaks }, { main_convenor: :user }] }
+          ]
+        }
+      ]
+    )
+    stale.find_each do |notification|
+      mark_read(where(id: notification.id)) unless notification.current_feedback_warning?(now: now)
+    end
+
+    candidates = feedback_warning_candidates(now: now)
+    existing = where(kind: FEEDBACK_WARNING_KINDS, task_id: candidates.select(:id))
+               .pluck(:recipient_id, :deduplication_key)
+               .to_set
+
+    created = 0
+    candidates.find_each do |task|
+      next unless feedback_warning_eligible?(task, now: now, started_at: started_at)
+
+      recipient = feedback_warning_recipient(task)
+      next if recipient.nil?
+
+      deduplication_key = feedback_warning_key(task)
+      next if existing.include?([recipient.id, deduplication_key])
+
+      notification = create_event(
+        recipient: recipient,
+        unit: task.unit,
+        project: task.project,
+        task: task,
+        kind: 'feedback_warning',
+        deduplication_key: deduplication_key
+      )
+      created += 1 if notification&.previously_new_record?
+    end
+    created
+  end
+
   def self.task_deadline_kind(task, now: Time.current)
     return nil unless task_deadline_eligible?(task, now: now)
 
@@ -270,6 +320,14 @@ class Notification < ApplicationRecord
   def self.task_deadline_key(task, kind)
     date = kind == 'task_start_now' ? task.local_start_date : task.local_due_date
     "task-deadline:#{task.id}:#{kind}:#{date.to_date.iso8601}"
+  end
+
+  def self.feedback_warning_key(task)
+    "feedback-warning:#{task.id}:#{task.submission_date.utc.iso8601(6)}"
+  end
+
+  def self.feedback_warning_status_id
+    @feedback_warning_status_id ||= TaskStatus.ready_for_feedback.id
   end
 
   # Moderation notifications stay unread until their recipient marks the tutor note itself as read.
@@ -346,6 +404,19 @@ class Notification < ApplicationRecord
     current_kind == kind && deduplication_key == self.class.task_deadline_key(task, kind)
   end
 
+  def current_feedback_warning?(now: Time.current)
+    return true unless FEEDBACK_WARNING_KINDS.include?(kind)
+    return false if task.nil?
+
+    self.class.feedback_warning_eligible?(task, now: now) &&
+      self.class.feedback_warning_recipient(task) == recipient &&
+      deduplication_key == self.class.feedback_warning_key(task)
+  end
+
+  def current_for_delivery?(now: Time.current)
+    current_task_deadline?(now: now) && current_feedback_warning?(now: now)
+  end
+
   def self.kind_for_comment(comment)
     case comment
     when TaskStatusComment
@@ -408,6 +479,38 @@ class Notification < ApplicationRecord
     end
   end
 
+  def self.feedback_warning_recipient(task)
+    tutorial_enrolment = task.project.tutorial_enrolments.find do |enrolment|
+      tutorial_stream_id = enrolment.tutorial.tutorial_stream_id
+      tutorial_stream_id.nil? || tutorial_stream_id == task.task_definition.tutorial_stream_id
+    end
+
+    tutorial_enrolment&.tutorial&.unit_role&.user || task.unit.main_convenor_user
+  end
+
+  def self.feedback_warning_candidates(now:)
+    Task
+      .joins(:task_definition, project: :unit)
+      .where(projects: { enrolled: true })
+      .where(units: { active: true, send_notifications: true })
+      .where('units.start_date <= :now AND units.end_date >= :now', now: now)
+      .where(task_status_id: feedback_warning_status_id)
+      .where.not(submission_date: nil)
+      .where(
+        'TIMESTAMPDIFF(DAY, tasks.submission_date, :now) >= units.feedback_warning_threshold_days',
+        now: now
+      )
+      .where('projects.target_grade >= task_definitions.target_grade')
+      .preload(
+        :task_definition,
+        project: [
+          :campus,
+          { tutorial_enrolments: { tutorial: { unit_role: :user } } },
+          { unit: [{ teaching_period: :breaks }, { main_convenor: :user }] }
+        ]
+      )
+  end
+
   def self.task_deadline_eligible?(task, now:)
     task.project.enrolled &&
       task.unit.active &&
@@ -419,6 +522,23 @@ class Notification < ApplicationRecord
       !task.submitted_status?
   end
 
+  def self.feedback_warning_eligible?(task, now:, started_at: nil)
+    eligible =
+      task.project.enrolled &&
+      task.unit.active &&
+      task.unit.send_notifications &&
+      task.unit.start_date <= now &&
+      task.unit.end_date >= now &&
+      task.task_definition.target_grade <= task.project.target_grade &&
+      task.task_status_id == feedback_warning_status_id &&
+      task.submission_date.present? &&
+      task.days_awaiting_feedback(now) >= task.unit.feedback_warning_threshold_days
+    return false unless eligible
+    return true if started_at.nil? || task.submission_date > started_at
+
+    task.days_awaiting_feedback(started_at) < task.unit.feedback_warning_threshold_days
+  end
+
   private_class_method :kind_for_comment, :discuss_deadline_for, :recipients_for_comment, :student_actor?,
-                       :each_task_deadline_candidate, :task_deadline_eligible?
+                       :each_task_deadline_candidate, :task_deadline_eligible?, :feedback_warning_candidates
 end

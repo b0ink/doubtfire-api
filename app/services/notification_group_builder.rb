@@ -34,6 +34,9 @@ class NotificationGroupBuilder
     # A moderation note belongs to one staff member's thread, so it groups by that
     # rather than joining the task's other notifications.
     return "#{state_key}:tutor-notes:#{notification.unit_role_id}:#{notification.task_id}" if Notification::MODERATION_KINDS.include?(notification.kind)
+    if notification.kind == 'feedback_warning'
+      return "#{state_key}:unit:#{notification.unit_id}:feedback-warning:#{feedback_warning_batch(notification)}"
+    end
 
     return "#{state_key}:task:#{notification.task_id}" if notification.task_id.present?
     return "#{state_key}:portfolio:#{notification.project_id}" if Notification::PORTFOLIO_KINDS.include?(notification.kind)
@@ -43,8 +46,9 @@ class NotificationGroupBuilder
 
   def build_group(items)
     latest = items.max_by(&:created_at)
-    task = latest.task
     counts = items.each_with_object(Hash.new(0)) { |notification, result| result[notification.kind] += 1 }
+    feedback_warning = counts['feedback_warning'].positive?
+    task = feedback_warning ? nil : latest.task
     latest_status = items
                     .select { |notification| notification.kind == 'task_status_changed' }
                     .max_by(&:created_at)
@@ -54,7 +58,7 @@ class NotificationGroupBuilder
                   .select { |notification| Notification::MODERATION_KINDS.include?(notification.kind) }
                   .sort_by { |notification| [notification.created_at, notification.id] }
     detail = detail_for(items, counts, latest_status)
-    project = latest.project || task&.project
+    project = feedback_warning ? nil : (latest.project || task&.project)
 
     {
       key: grouping_key(latest),
@@ -65,8 +69,9 @@ class NotificationGroupBuilder
         code: latest.unit.code,
         name: latest.unit.name
       },
-      project_id: latest.project_id,
+      project_id: project&.id,
       task: task_details(task, latest.recipient),
+      destination: feedback_warning ? { type: 'unit_inbox', unit_id: latest.unit_id } : nil,
       counts: counts,
       event_count: items.count,
       latest_status: latest_status,
@@ -84,6 +89,10 @@ class NotificationGroupBuilder
       detail: detail,
       summary: "#{subject_for(task, latest.recipient, counts, latest)} - #{detail}"
     }
+  end
+
+  def feedback_warning_batch(notification)
+    notification.email_sent_at ? "emailed:#{notification.email_sent_at.to_f}" : 'not-emailed'
   end
 
   # The task's Mod Notes tab shows the notes on its own tutor, so a note about
@@ -115,7 +124,7 @@ class NotificationGroupBuilder
   def severity_for(items)
     kinds = items.map(&:kind)
     return 'critical' if kinds.intersect?(%w[discuss_expired pdf_generation_failed portfolio_failed task_overdue])
-    return 'warning' if kinds.intersect?(%w[discuss_warning overseer_failed task_due_soon] + Notification::MODERATION_KINDS)
+    return 'warning' if kinds.intersect?(%w[discuss_warning overseer_failed task_due_soon feedback_warning] + Notification::MODERATION_KINDS)
 
     'normal'
   end
@@ -129,6 +138,7 @@ class NotificationGroupBuilder
   def subject_for(task, recipient, counts, latest)
     return latest.message_subject.presence || 'Email message' if counts['communication_email'].positive?
     return 'Portfolio' if Notification::PORTFOLIO_KINDS.any? { |kind| counts[kind].positive? }
+    return 'Feedback required' if counts['feedback_warning'].positive?
     return 'Unit notification' if task.nil?
 
     return task.task_definition.abbreviation if task.project.student == recipient
@@ -141,6 +151,7 @@ class NotificationGroupBuilder
   def detail_for(items, counts, latest_status)
     details = [
       communication_detail(items, counts),
+      feedback_warning_detail(counts),
       *event_details(counts),
       moderation_detail(items),
       comment_detail(counts),
@@ -150,6 +161,13 @@ class NotificationGroupBuilder
     # Sentence case, so a single detail reads as a heading and several still join
     # into one readable sentence.
     details.to_sentence.upcase_first
+  end
+
+  def feedback_warning_detail(counts)
+    count = counts['feedback_warning']
+    return unless count.positive?
+
+    "You have #{pluralize(count, 'task')} that #{count == 1 ? 'requires' : 'require'} feedback as soon as possible"
   end
 
   def communication_detail(items, counts)

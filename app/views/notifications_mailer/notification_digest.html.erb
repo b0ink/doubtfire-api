@@ -60,6 +60,8 @@
                     <div style="min-width:0; font-weight:bold; color:#333; font-size:1.1em; line-height:1.4;">
                       <% if group[:task] %>
                         <%= group[:task][:abbreviation] %> - <%= group[:task][:name] %>
+                      <% elsif group.dig(:destination, :type) == 'unit_inbox' %>
+                        Feedback required
                       <% elsif group[:message_subject].present? %>
                         <%= group[:message_subject] %>
                       <% elsif group[:project_id] %>
@@ -87,6 +89,12 @@
                     <div style="padding-top:4px;">
                       <a href="<%= @doubtfire_host %>/projects/<%= group[:task][:project_id] %>/dashboard/<%= group[:task][:abbreviation] %><%= '?tutor=true' if group[:task][:staff_view] %>" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
                         View this task
+                      </a>
+                    </div>
+                  <% elsif group.dig(:destination, :type) == 'unit_inbox' %>
+                    <div style="padding-top:4px;">
+                      <a href="<%= @doubtfire_host %>/units/<%= group.dig(:destination, :unit_id) %>/tasks/inbox" target="_blank" rel="noopener noreferrer" style="color:#6a97d2; font-size:0.9em;">
+                        Open inbox
                       </a>
                     </div>
                   <% elsif group[:project_id] %>

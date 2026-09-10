@@ -32,6 +32,10 @@ notify_task_deadlines:
   cron: "every hour"
   class: "NotifyTaskDeadlinesJob"
 
+notify_feedback_warnings:
+  cron: "every hour"
+  class: "NotifyFeedbackWarningsJob"
+
 poll_notification_digests:
   cron: "every 5 minutes"
   class: "PollNotificationDigestsJob"

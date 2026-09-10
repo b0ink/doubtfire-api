@@ -42,6 +42,34 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal 1, last_response_body['count']
   end
 
+  def test_feedback_warnings_group_by_unit_and_email_delivery_batch
+    @student.received_notifications.destroy_all
+    delivered_at = Time.current.change(usec: 0)
+    2.times do
+      FactoryBot.create(
+        :notification,
+        recipient: @student,
+        unit: @unit,
+        kind: 'feedback_warning',
+        email_processed_at: delivered_at,
+        email_sent_at: delivered_at
+      )
+    end
+    FactoryBot.create(
+      :notification,
+      recipient: @student,
+      unit: @unit,
+      kind: 'feedback_warning'
+    )
+
+    get '/api/notifications', state: 'unread'
+
+    assert_equal 2, last_response_body['unread_count']
+    assert_equal [1, 2], last_response_body['groups'].map { |group| group.dig('counts', 'feedback_warning') }.sort
+    assert_equal [{ 'type' => 'unit_inbox', 'unit_id' => @unit.id }],
+                 last_response_body['groups'].pluck('destination').uniq
+  end
+
   def test_portfolio_notifications_are_grouped_by_project
     @student.received_notifications.destroy_all
     Notification.create_for_portfolio(@project, success: true)
@@ -178,6 +206,7 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal '07:00', last_response_body['digest_start_time']
     assert_equal @project.campus.timezone, last_response_body['digest_timezone']
     assert_equal %w[in_app email], last_response_body.dig('channels', 'new_task_comment')
+    assert_equal %w[in_app email], last_response_body.dig('channels', 'feedback_warning')
     assert_empty last_response_body['units']
   end
 

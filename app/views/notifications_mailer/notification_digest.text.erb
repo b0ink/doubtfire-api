@@ -11,7 +11,7 @@ You have <%= @notification_count %> new <%= 'notification'.pluralize(@notificati
 <%= group_section[:heading] %>
 <% end %>
 <% group_section[:groups].each do |group| %>
-- <% if group[:task] %><%= group[:task][:abbreviation] %> - <%= group[:task][:name] %><% elsif group[:message_subject].present? %><%= group[:message_subject] %><% elsif group[:project_id] %>Portfolio<% else %>Unit notification<% end %><% if group_section[:kind] && group.dig(:task, :due_date) %> — <%= notification_due_date(group) %><% end %>
+- <% if group[:task] %><%= group[:task][:abbreviation] %> - <%= group[:task][:name] %><% elsif group.dig(:destination, :type) == 'unit_inbox' %>Feedback required<% elsif group[:message_subject].present? %><%= group[:message_subject] %><% elsif group[:project_id] %>Portfolio<% else %>Unit notification<% end %><% if group_section[:kind] && group.dig(:task, :due_date) %> — <%= notification_due_date(group) %><% end %>
 <% unless group_section[:kind] %>
   <%= notification_timestamp(group) %>
 <% end %>
@@ -20,6 +20,8 @@ You have <%= @notification_count %> new <%= 'notification'.pluralize(@notificati
 <% end %>
 <% if group[:task] %>
   <%= @doubtfire_host %>/projects/<%= group[:task][:project_id] %>/dashboard/<%= group[:task][:abbreviation] %><%= '?tutor=true' if group[:task][:staff_view] %>
+<% elsif group.dig(:destination, :type) == 'unit_inbox' %>
+  <%= @doubtfire_host %>/units/<%= group.dig(:destination, :unit_id) %>/tasks/inbox
 <% elsif group[:project_id] %>
   <%= @doubtfire_host %>/projects/<%= group[:project_id] %>/portfolio
 <% end %>
