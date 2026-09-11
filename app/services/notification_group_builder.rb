@@ -30,6 +30,7 @@ class NotificationGroupBuilder
   def grouping_key(notification)
     state_key = notification.read_at ? "read:#{notification.read_at.to_f}" : 'unread'
     return "#{state_key}:communication-email:#{notification.id}" if notification.kind == 'communication_email'
+    return "#{state_key}:weekly-summary:#{notification.id}" if notification.kind == 'weekly_summary'
 
     # A moderation note belongs to one staff member's thread, so it groups by that
     # rather than joining the task's other notifications.
@@ -59,6 +60,7 @@ class NotificationGroupBuilder
                   .sort_by { |notification| [notification.created_at, notification.id] }
     detail = detail_for(items, counts, latest_status)
     project = feedback_warning ? nil : (latest.project || task&.project)
+    weekly_summary = latest.weekly_summary_data
 
     {
       key: grouping_key(latest),
@@ -85,7 +87,8 @@ class NotificationGroupBuilder
       tutor_note_on_task_tutor: tutor_note_on_task_tutor?(tutor_notes.first, task),
       overseer_assessment_id: overseer_assessment_id(items),
       message_subject: latest.message_subject,
-      message_body: latest.message_body,
+      message_body: weekly_summary ? nil : latest.message_body,
+      weekly_summary: weekly_summary,
       detail: detail,
       summary: "#{subject_for(task, latest.recipient, counts, latest)} - #{detail}"
     }
@@ -137,6 +140,7 @@ class NotificationGroupBuilder
 
   def subject_for(task, recipient, counts, latest)
     return latest.message_subject.presence || 'Email message' if counts['communication_email'].positive?
+    return latest.message_subject.presence || 'Weekly summary' if counts['weekly_summary'].positive?
     return 'Portfolio' if Notification::PORTFOLIO_KINDS.any? { |kind| counts[kind].positive? }
     return 'Feedback required' if counts['feedback_warning'].positive?
     return 'Unit notification' if task.nil?
@@ -151,6 +155,7 @@ class NotificationGroupBuilder
   def detail_for(items, counts, latest_status)
     details = [
       communication_detail(items, counts),
+      weekly_summary_detail(items, counts),
       feedback_warning_detail(counts),
       *event_details(counts),
       moderation_detail(items),
@@ -161,6 +166,21 @@ class NotificationGroupBuilder
     # Sentence case, so a single detail reads as a heading and several still join
     # into one readable sentence.
     details.to_sentence.upcase_first
+  end
+
+  def weekly_summary_detail(items, counts)
+    return unless counts['weekly_summary'].positive?
+
+    data = items.max_by(&:created_at).weekly_summary_data || {}
+    if data['audience'] == 'staff'
+      assessed = data.fetch('assessed_tasks', 0)
+      awaiting = data.fetch('awaiting_feedback', 0)
+      "You assessed #{pluralize(assessed, 'task')} and have #{pluralize(awaiting, 'task')} awaiting feedback"
+    else
+      received = data.fetch('received_comments', 0)
+      activity = data.fetch('task_activity', 0)
+      "You received #{pluralize(received, 'comment')} and had activity on #{pluralize(activity, 'task')} this week"
+    end
   end
 
   def feedback_warning_detail(counts)

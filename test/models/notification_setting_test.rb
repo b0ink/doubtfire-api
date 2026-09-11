@@ -19,6 +19,7 @@ class NotificationSettingTest < ActiveSupport::TestCase
     assert_equal NotificationSetting.default_digest_timezone, settings.digest_timezone
     assert_equal 1, settings.digest_weekday
     assert_equal %w[in_app email], settings.channels['new_task_comment']
+    assert_empty settings.channels['weekly_summary']
     assert_equal ['in_app'], settings.channels['communication_email']
     assert_equal Notification::KINDS.sort, settings.channels.keys.sort
   end
@@ -56,11 +57,34 @@ class NotificationSettingTest < ActiveSupport::TestCase
   def test_weekly_summary_honours_the_unit_mute
     settings = NotificationSetting.for(FactoryBot.create(:user))
     unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
+    settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
 
     assert settings.weekly_summary_for?(unit)
 
     FactoryBot.create(:notification_unit_override, user: settings.user, unit: unit, muted: true)
     assert_not settings.weekly_summary_for?(unit)
+  end
+
+  def test_weekly_summary_can_be_opted_into_without_changing_other_notifications
+    settings = NotificationSetting.for(FactoryBot.create(:user))
+    unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
+
+    assert_not settings.weekly_summary_for?(unit)
+    settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
+
+    assert settings.weekly_summary_for?(unit)
+    assert settings.delivers?(unit, 'new_task_comment', :email)
+  end
+
+  def test_weekly_summary_is_due_in_the_users_timezone
+    user = FactoryBot.create(:user)
+    campus = FactoryBot.create(:campus, timezone: 'Pacific/Auckland')
+    FactoryBot.create(:project, user: user, campus: campus)
+    settings = FactoryBot.create(:notification_setting, user: user)
+
+    assert settings.weekly_summary_due?(Time.utc(2026, 7, 26, 19, 5))
+    assert_not settings.weekly_summary_due?(Time.utc(2026, 7, 26, 18, 55))
+    assert_not settings.weekly_summary_due?(Time.utc(2026, 7, 26, 19, 15))
   end
 
   def test_a_muted_unit_keeps_following_the_defaults_underneath

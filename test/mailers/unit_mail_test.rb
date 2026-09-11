@@ -2,7 +2,7 @@ require 'test_helper'
 require 'grade_helper'
 
 class UnitMailTest < ActionMailer::TestCase
-  def test_send_summary_email
+  def test_create_weekly_summary_notifications_without_sending_the_legacy_emails
     unit = FactoryBot.create :unit
 
     summary_stats = {}
@@ -11,10 +11,24 @@ class UnitMailTest < ActionMailer::TestCase
     summary_stats[:week_start] = summary_stats[:week_end] - 7.days
     summary_stats[:weeks_comments] = TaskComment.where("created_at >= :start AND created_at < :end", start: summary_stats[:week_start], end: summary_stats[:week_end]).count
     summary_stats[:weeks_engagements] = TaskEngagement.where("engagement_time >= :start AND engagement_time < :end", start: summary_stats[:week_start], end: summary_stats[:week_end]).count
+    (unit.active_projects.map(&:student) + unit.staff.map(&:user)).uniq.each do |recipient|
+      settings = NotificationSetting.for(recipient)
+      settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
+    end
 
-    unit.send_weekly_status_emails(summary_stats)
+    assert_no_emails { unit.create_weekly_summary_notifications(summary_stats) }
 
-    assert_equal unit.active_projects.count + unit.staff.count, ActionMailer::Base.deliveries.count
+    summaries = Notification.where(unit: unit, kind: 'weekly_summary')
+    assert_equal unit.active_projects.count + unit.staff.count, summaries.count
+    student_summary_count = summaries.filter_map(&:weekly_summary_data).count { |data| data['audience'] == 'student' }
+    staff_summary_count = summaries.filter_map(&:weekly_summary_data).count { |data| data['audience'] == 'staff' }
+    assert_equal unit.active_projects.count, student_summary_count
+    assert_equal unit.staff.count, staff_summary_count
+
+    # Retrying the same week's work does not create another copy.
+    assert_no_difference -> { summaries.reload.count } do
+      unit.create_weekly_summary_notifications(summary_stats)
+    end
     unit.destroy!
   end
 
@@ -30,8 +44,8 @@ class UnitMailTest < ActionMailer::TestCase
 
     mail = PortfolioEvidenceMailer.portfolio_ready(project)
 
-    assert_equal 1, mail.from().count
-    assert_equal convenor.email, mail.from().first
+    assert_equal 1, mail.from.count
+    assert_equal convenor.email, mail.from.first
     assert mail.html_part.body.include? "projects/#{project.id}/portfolio"
     unit.destroy!
   end
@@ -48,8 +62,8 @@ class UnitMailTest < ActionMailer::TestCase
 
     mail = PortfolioEvidenceMailer.portfolio_failed(project)
 
-    assert_equal 1, mail.from().count
-    assert_equal convenor.email, mail.from().first
+    assert_equal 1, mail.from.count
+    assert_equal convenor.email, mail.from.first
     assert mail.html_part.body.include? "projects/#{project.id}/portfolio"
     unit.destroy!
   end

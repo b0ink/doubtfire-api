@@ -10,6 +10,7 @@ class Notification < ApplicationRecord
     task_due_soon
     task_overdue
     feedback_warning
+    weekly_summary
     overseer_failed
     pdf_generation_failed
     discuss_warning
@@ -186,6 +187,21 @@ class Notification < ApplicationRecord
       message_body: body,
       deduplication_key: deduplication_key,
       channels: ['in_app']
+    )
+  end
+
+  def self.create_weekly_summary(recipient:, unit:, data:, project: nil)
+    week_start = Time.zone.parse(data.fetch(:week_start).to_s).to_date.iso8601
+    audience = data.fetch(:audience)
+    create_event(
+      recipient: recipient,
+      unit: unit,
+      project: project,
+      actor: unit.main_convenor_user,
+      kind: 'weekly_summary',
+      message_subject: "#{unit.code}: Weekly summary",
+      message_body: JSON.generate(data),
+      deduplication_key: "weekly-summary:#{unit.id}:#{audience}:#{week_start}"
     )
   end
 
@@ -390,6 +406,14 @@ class Notification < ApplicationRecord
 
   def recipient_withdrawn?
     self.class.withdrawn_student?(project, recipient)
+  end
+
+  def weekly_summary_data
+    return unless kind == 'weekly_summary' && message_body.present?
+
+    JSON.parse(message_body)
+  rescue JSON::ParserError
+    nil
   end
 
   def email_ready?(at: Time.current)

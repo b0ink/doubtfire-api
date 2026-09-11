@@ -55,6 +55,99 @@ class NotificationJobsTest < ActiveSupport::TestCase
     assert_includes digest_html, second.code
   end
 
+  def test_digest_renders_a_convenors_weekly_tutor_progress
+    settings = create_settings
+    settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
+    unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
+    data = {
+      audience: 'staff',
+      week_start: 1.week.ago.iso8601,
+      week_end: Time.current.iso8601,
+      unit_comments: 10,
+      unit_task_activity: 14,
+      sent_comments: 6,
+      received_comments: 2,
+      student_task_activity: 9,
+      has_students: true,
+      is_convenor: true,
+      assessed_tasks: 4,
+      discussed_tasks: 3,
+      awaiting_feedback: 2,
+      oldest_task_days: 5,
+      reverted_students: [],
+      reverted_student_count: 0,
+      tutorial_streams: [{
+        name: 'On campus',
+        unallocated_students: 1,
+        tutors: [{
+          tutor_name: 'Taylor Tutor',
+          students: 18,
+          total_assessments: 40,
+          weekly_assessments: 7,
+          total_comments: 62,
+          weekly_comments: 8,
+          awaiting_feedback: 3,
+          oldest_task_days: 4,
+          total_discussions: 12,
+          weekly_discussions: 2
+        }]
+      }]
+    }
+    notification = Notification.create_weekly_summary(recipient: settings.user, unit: unit, data: data)
+
+    assert_emails 1 do
+      SendNotificationDigestJob.new.perform(settings.id)
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_includes mail.html_part.body.to_s, 'Tutor progress'
+    assert_includes mail.html_part.body.to_s, 'Taylor Tutor'
+    assert_includes mail.html_part.body.to_s, 'week / total'
+    assert_match(%r{7\s*/\s*40}, mail.html_part.body.to_s)
+    assert_includes mail.html_part.body.to_s, '1 student not allocated'
+    assert_includes mail.text_part.body.to_s, 'assessments 7 this week / 40 total'
+    assert_not_nil notification.reload.email_sent_at
+  end
+
+  def test_digest_renders_a_students_weekly_progress_and_focus_tasks
+    settings = create_settings
+    settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
+    unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
+    data = {
+      audience: 'student',
+      week_start: 1.week.ago.iso8601,
+      week_end: Time.current.iso8601,
+      unit_comments: 10,
+      unit_task_activity: 14,
+      sent_comments: 2,
+      received_comments: 3,
+      task_activity: 5,
+      student_task_activity: 4,
+      tutor_allocated: true,
+      did_revert_to_pass: false,
+      portfolio_exists: false,
+      top_tasks: [{
+        abbreviation: 'P4',
+        name: 'Loops',
+        reason: 'soon',
+        reason_label: 'Due soon',
+        status: 'working_on_it'
+      }]
+    }
+    Notification.create_weekly_summary(recipient: settings.user, unit: unit, data: data)
+
+    assert_emails 1 do
+      SendNotificationDigestJob.new.perform(settings.id)
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_includes mail.html_part.body.to_s, 'What to focus on next'
+    assert_includes mail.html_part.body.to_s, 'Due soon'
+    assert_includes mail.html_part.body.to_s, '/projects/'
+    assert_includes mail.html_part.body.to_s, '/dashboard/P4'
+    assert_includes mail.text_part.body.to_s, 'Comments received: 3'
+  end
+
   def test_read_notification_is_not_sent_in_digest
     settings = create_settings
     notification = FactoryBot.create(

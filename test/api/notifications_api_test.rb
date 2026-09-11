@@ -30,6 +30,7 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal 1, last_response_body['groups'].count
     assert_equal @task.id, last_response_body.dig('groups', 0, 'task', 'id')
     assert_equal 1, last_response_body['unread_count']
+    assert_equal({ @unit.id.to_s => 1 }, last_response_body['unread_counts_by_unit'])
   end
 
   def test_unread_count_counts_a_task_group_instead_of_each_event
@@ -40,6 +41,18 @@ class NotificationsApiTest < ActiveSupport::TestCase
 
     assert_equal 200, last_response.status
     assert_equal 1, last_response_body['count']
+    assert_equal({ @unit.id.to_s => 1 }, last_response_body['unread_counts_by_unit'])
+  end
+
+  def test_unread_count_returns_grouped_counts_for_each_unit
+    other_unit = FactoryBot.create(:unit, with_students: false, task_count: 0)
+    FactoryBot.create(:notification, recipient: @student, unit: other_unit)
+
+    get '/api/notifications/unread_count'
+
+    assert_equal 200, last_response.status
+    assert_equal 2, last_response_body['count']
+    assert_equal({ @unit.id.to_s => 1, other_unit.id.to_s => 1 }, last_response_body['unread_counts_by_unit'])
   end
 
   def test_feedback_warnings_group_by_unit_and_email_delivery_batch
@@ -103,6 +116,34 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal 2, last_response_body['groups'].count
     assert_equal ['Update 0', 'Update 1'], last_response_body['groups'].pluck('message_subject').sort
     assert_equal ['Full email body 0', 'Full email body 1'], last_response_body['groups'].pluck('message_body').sort
+  end
+
+  def test_weekly_summaries_are_returned_individually_with_structured_statistics
+    @student.received_notifications.destroy_all
+    settings = NotificationSetting.for(@student)
+    settings.update!(channels: settings.channels.merge('weekly_summary' => %w[in_app email]))
+    data = {
+      audience: 'student',
+      week_start: 1.week.ago.iso8601,
+      week_end: Time.current.iso8601,
+      unit_comments: 8,
+      unit_task_activity: 12,
+      sent_comments: 2,
+      received_comments: 3,
+      task_activity: 4,
+      student_task_activity: 4,
+      tutor_allocated: true,
+      top_tasks: []
+    }
+    Notification.create_weekly_summary(recipient: @student, unit: @unit, project: @project, data: data)
+
+    get '/api/notifications', state: 'unread'
+
+    assert_equal 200, last_response.status
+    assert_equal 1, last_response_body['unread_count']
+    assert_equal({ 'weekly_summary' => 1 }, last_response_body.dig('groups', 0, 'counts'))
+    assert_equal 3, last_response_body.dig('groups', 0, 'weekly_summary', 'received_comments')
+    assert_nil last_response_body.dig('groups', 0, 'message_body')
   end
 
   def test_get_filters_groups_by_category_and_search
@@ -207,6 +248,7 @@ class NotificationsApiTest < ActiveSupport::TestCase
     assert_equal @project.campus.timezone, last_response_body['digest_timezone']
     assert_equal %w[in_app email], last_response_body.dig('channels', 'new_task_comment')
     assert_equal %w[in_app email], last_response_body.dig('channels', 'feedback_warning')
+    assert_empty last_response_body.dig('channels', 'weekly_summary')
     assert_empty last_response_body['units']
   end
 

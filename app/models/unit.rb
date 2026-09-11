@@ -3699,8 +3699,13 @@ class Unit < ApplicationRecord
     repacked_zip.close! if defined?(repacked_zip) && repacked_zip.present?
   end
 
-  def send_weekly_status_emails(summary_stats)
+  def create_weekly_summary_notifications(summary_stats, recipient_ids: nil)
     return unless send_notifications
+
+    summary_recipients = recipient_ids.presence
+    student_projects = summary_recipients ? active_projects.where(user_id: summary_recipients) : active_projects
+    staff_recipients = summary_recipients ? staff.where(user_id: summary_recipients) : staff
+    build_staff_summaries = staff_recipients.exists?
 
     summary_stats[:unit] = self
     summary_stats[:tutorials] = {}
@@ -3718,24 +3723,29 @@ class Unit < ApplicationRecord
 
     summary_stats[:unit_week_engagements] = task_engagements.where("task_engagements.engagement_time > :start AND task_engagements.engagement_time < :end", start: summary_stats[:week_start], end: summary_stats[:week_end]).count
 
-    days_to_end_of_unit = (end_date.to_date - DateTime.now).to_i
-    days_from_start_of_unit = (DateTime.now - start_date.to_date).to_i
+    summary_date = summary_stats[:week_end].to_date
+    days_to_end_of_unit = (end_date.to_date - summary_date).to_i
+    days_from_start_of_unit = (summary_date - start_date.to_date).to_i
 
     return if days_from_start_of_unit < 4 || days_to_end_of_unit < 0
 
-    staff.each do |ur|
-      summary_stats[:staff][ur.user] ||= {}
-      summary_stats[:staff][ur.user][:staff_engagements] ||= 0
-      summary_stats[:staff][ur.user][:tasks_awaiting_feedback_count] ||= 0
-      summary_stats[:staff][ur.user][:weekly_engagements_count] ||= 0
-      summary_stats[:staff][ur.user][:weekly_total_tasks_discussed] ||= 0
-      summary_stats[:staff][ur.user][:oldest_task_days] ||= 0
-      summary_stats[:revert][ur.user] = []
+    if build_staff_summaries
+      staff.each do |ur|
+        summary_stats[:staff][ur.user] ||= {}
+        summary_stats[:staff][ur.user][:staff_engagements] ||= 0
+        summary_stats[:staff][ur.user][:tasks_awaiting_feedback_count] ||= 0
+        summary_stats[:staff][ur.user][:weekly_engagements_count] ||= 0
+        summary_stats[:staff][ur.user][:weekly_total_tasks_discussed] ||= 0
+        summary_stats[:staff][ur.user][:oldest_task_days] ||= 0
+        summary_stats[:revert][ur.user] = []
+      end
     end
 
-    active_projects.each do |project|
-      project.send_weekly_status_email(summary_stats, days_from_start_of_unit > 28 && days_to_end_of_unit > 14)
+    student_projects.each do |project|
+      project.create_weekly_summary_notification(summary_stats, days_from_start_of_unit > 28 && days_to_end_of_unit > 14)
     end
+
+    return unless build_staff_summaries
 
     tutorial_streams.each do |tutorial_stream|
       summary_stats[:tutorial_streams][tutorial_stream] ||= {}
@@ -3773,8 +3783,8 @@ class Unit < ApplicationRecord
     # Group tutorials by tutor
     group_tutorials_by_tutor(summary_stats)
 
-    staff.each do |ur|
-        ur.send_weekly_status_email(summary_stats)
+    staff_recipients.each do |ur|
+        ur.create_weekly_summary_notification(summary_stats)
     end
 
     summary_stats[:staff] = {}

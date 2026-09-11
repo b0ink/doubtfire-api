@@ -33,7 +33,13 @@ class NotificationSetting < ApplicationRecord
 
   def self.default_channels
     Notification::KINDS.index_with do |kind|
-      Notification::COMMUNICATION_KINDS.include?(kind) ? ['in_app'] : %w[in_app email]
+      if kind == 'weekly_summary'
+        []
+      elsif Notification::COMMUNICATION_KINDS.include?(kind)
+        ['in_app']
+      else
+        %w[in_app email]
+      end
     end
   end
 
@@ -66,7 +72,22 @@ class NotificationSetting < ApplicationRecord
 
   def weekly_summary_for?(unit)
     override = user.notification_unit_overrides.find_by(unit_id: unit&.id)
-    !override&.muted
+    return false if override&.muted
+
+    Array((override&.customised? ? override.channels : channels)['weekly_summary']).any?
+  end
+
+  def weekly_summary_opted_in?
+    return true if Array(channels['weekly_summary']).any?
+
+    user.notification_unit_overrides.any? do |override|
+      !override.muted && override.customised? && Array(override.channels['weekly_summary']).any?
+    end
+  end
+
+  def weekly_summary_due?(at = Time.current)
+    local = at.in_time_zone(digest_timezone)
+    local.monday? && local.hour == 7 && local.min < 15
   end
 
   # Notifications are always recorded so the digest has something to send, so the

@@ -26,26 +26,42 @@ class NotificationsApi < Grape::API
       notifications.select { |notification| notification_settings.shows_in_app?(notification.unit_id, notification.kind) }
     end
 
-    def unread_group_count
-      rows = current_user.received_notifications.unread.pluck(
+    def unread_group_keys_by_unit
+      @unread_group_keys_by_unit ||= current_user.received_notifications.unread.pluck(
         :id, :task_id, :project_id, :unit_id, :kind, :unit_role_id, :email_sent_at
-      )
-      rows.select { |_id, _task_id, _project_id, unit_id, kind, _unit_role_id, _email_sent_at| notification_settings.shows_in_app?(unit_id, kind) }.map do |id, task_id, project_id, unit_id, kind, unit_role_id, email_sent_at|
-        if Notification::MODERATION_KINDS.include?(kind)
-          "tutor-notes:#{unit_role_id}:#{task_id}"
-        elsif kind == 'feedback_warning'
-          batch = email_sent_at ? "emailed:#{email_sent_at.to_f}" : 'not-emailed'
-          "unit:#{unit_id}:feedback-warning:#{batch}"
-        elsif task_id.present?
-          "task:#{task_id}"
-        elsif Notification::COMMUNICATION_KINDS.include?(kind)
-          "communication-email:#{id}"
-        elsif Notification::PORTFOLIO_KINDS.include?(kind)
-          "portfolio:#{project_id}"
-        else
-          "unit:#{unit_id}:#{kind}"
-        end
-      end.uniq.count
+      ).filter_map do |id, task_id, project_id, unit_id, kind, unit_role_id, email_sent_at|
+        next unless notification_settings.shows_in_app?(unit_id, kind)
+
+        key =
+          if Notification::MODERATION_KINDS.include?(kind)
+            "tutor-notes:#{unit_role_id}:#{task_id}"
+          elsif kind == 'feedback_warning'
+            batch = email_sent_at ? "emailed:#{email_sent_at.to_f}" : 'not-emailed'
+            "unit:#{unit_id}:feedback-warning:#{batch}"
+          elsif kind == 'weekly_summary'
+            "weekly-summary:#{id}"
+          elsif task_id.present?
+            "task:#{task_id}"
+          elsif Notification::COMMUNICATION_KINDS.include?(kind)
+            "communication-email:#{id}"
+          elsif Notification::PORTFOLIO_KINDS.include?(kind)
+            "portfolio:#{project_id}"
+          else
+            "unit:#{unit_id}:#{kind}"
+          end
+
+        [unit_id, key]
+      end.uniq
+    end
+
+    def unread_group_count
+      unread_group_keys_by_unit.count
+    end
+
+    def unread_group_counts_by_unit
+      unread_group_keys_by_unit.each_with_object(Hash.new(0)) do |(unit_id, _key), counts|
+        counts[unit_id] += 1
+      end
     end
 
     # The units sent are the whole set that departs from the settings, so any unit
@@ -105,7 +121,8 @@ class NotificationsApi < Grape::API
           group.dig(:task, :name),
           group.dig(:task, :student_name),
           group[:message_subject],
-          group[:message_body]
+          group[:message_body],
+          group[:weekly_summary]&.to_json
         ].compact.any? { |value| value.to_s.downcase.include?(query) }
       end
     end
@@ -119,13 +136,14 @@ class NotificationsApi < Grape::API
       page: page,
       per_page: per_page,
       total: total,
-      unread_count: unread_group_count
+      unread_count: unread_group_count,
+      unread_counts_by_unit: unread_group_counts_by_unit
     }
   end
 
   desc 'Get the grouped unread notification count for the current user'
   get '/notifications/unread_count' do
-    { count: unread_group_count }
+    { count: unread_group_count, unread_counts_by_unit: unread_group_counts_by_unit }
   end
 
   desc 'Mark selected notifications as read'
